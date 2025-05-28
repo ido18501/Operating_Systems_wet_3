@@ -2,8 +2,6 @@
 #include <string.h>
 #include "log.h"
 
-// Opaque struct definition
-
 
 // Creates a new server log instance (stub)
 server_log create_log() {
@@ -92,15 +90,11 @@ int get_log(server_log log, char **dst) {
     }
 
     log_start_read(log);
-
-    pthread_mutex_lock(&log->lock);
     *dst = malloc(log->size + 1);
     if (*dst) {
         memcpy(*dst, log->buffer, log->size + 1);
     }
     int result_size = log->size;
-    pthread_mutex_unlock(&log->lock);
-
     log_end_read(log);
     return result_size;
 }

@@ -1,24 +1,33 @@
 import subprocess
-import threading
 
-def run_client(filename, method):
-    subprocess.run(["./client", "localhost", "8080", filename, method])
-
-# Create multiple client threads
-threads = []
+# Each request will run in a separate subprocess to simulate concurrency
 requests = [
     ("/pageA.txt", "GET"),
     ("/pageB.txt", "GET"),
     ("/pageC.txt", "GET"),
     ("/pageA.txt", "GET"),
     ("/pageB.txt", "GET"),
-    ("/pageC.txt", "POST"),  # This will read the log
+    ("/pageC.txt", "POST"),  # This reads the log
 ]
 
-for filename, method in requests:
-    t = threading.Thread(target=run_client, args=(filename, method))
-    threads.append(t)
-    t.start()
+# Store subprocesses
+processes = []
 
-for t in threads:
-    t.join()
+for i, (filename, method) in enumerate(requests):
+    p = subprocess.Popen(
+        ["./client", "localhost", "8080", filename, method],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+    processes.append((i + 1, p))
+
+# Read and print outputs after all start
+for thread_id, proc in processes:
+    stdout, stderr = proc.communicate()
+    print(f"\n=== Request {thread_id} - {requests[thread_id - 1][1]} {requests[thread_id - 1][0]} ===")
+    for line in stdout.strip().split("\n"):
+        print(f"[Request {thread_id}] {line}")
+    if stderr:
+        print(f"[Request {thread_id}][STDERR] {stderr}")
+
