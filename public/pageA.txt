@@ -1,1 +1,3 @@
-Page A
+This is page A content for testing the web server.
+This file is used to test static GET requests.
+It should be served by the web server and statistics should be collected.

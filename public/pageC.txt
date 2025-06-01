@@ -1,1 +1,3 @@
-Page C
+This is page C content for testing the web server.
+This file tests the server's ability to handle different files.
+Statistics should properly track requests for different files.

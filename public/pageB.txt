@@ -1,1 +1,3 @@
-Page B
+This is page B content for testing the web server.
+This file is used for both GET and POST request testing.
+The server should handle multiple concurrent requests for this file.

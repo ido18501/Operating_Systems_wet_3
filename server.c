@@ -136,6 +136,14 @@ void getargs(int *port, int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    int listenfd, connfd, port, clientlen;
+    struct sockaddr_in clientaddr;
+
+    getargs(&port, argc, argv);
+
+
+
+    listenfd = Open_listenfd(port);
     //initialize que
     RequestQueue * queue=init_queue(que_size);
     //initialize thread pool
@@ -163,14 +171,7 @@ int main(int argc, char *argv[])
 
 
 
-    int listenfd, connfd, port, clientlen;
-    struct sockaddr_in clientaddr;
 
-    getargs(&port, argc, argv);
-
-
-
-    listenfd = Open_listenfd(port);
     while (1) {
         clientlen = sizeof(clientaddr);
         connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
