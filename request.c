@@ -202,7 +202,10 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
     rio_t rio;
 
     Rio_readinitb(&rio, fd);
-    Rio_readlineb(&rio, buf, MAXLINE);
+    ssize_t n = Rio_readlineb(&rio, buf, MAXLINE);
+    if (n <= 0) {
+        return;
+    }
     sscanf(buf, "%s %s %s", method, uri, version);
 
     if (!strcasecmp(method, "GET")) {

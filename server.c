@@ -38,6 +38,7 @@ static pthread_t *thread_pool;
 static int num_threads=10;
 static RequestQueue *g_queue = NULL;
 static server_log g_log = NULL;
+static int que_size=50;
 
 RequestQueue* init_queue(int capacity) {
     RequestQueue *q = malloc(sizeof(RequestQueue));
@@ -89,7 +90,7 @@ void *worker_thread(void *arg) {
     int thread_id = args->thread_id;
     free(args);  // ✅ Fix 4
 
-    threads_stats stats = malloc(sizeof(threads_stats));
+    threads_stats stats = malloc(sizeof(*stats));
     stats->id = thread_id;
     stats->stat_req = 0;
     stats->dynm_req = 0;
@@ -116,11 +117,17 @@ void *worker_thread(void *arg) {
 // Parses command-line arguments
 void getargs(int *port, int argc, char *argv[])
 {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+    if (argc < 4) {
+        fprintf(stderr, "Usage: %s <port> <threads> <queue size>\n", argv[0]);
         exit(1);
     }
     *port = atoi(argv[1]);
+    num_threads=atoi(argv[2]);
+    que_size=atoi(argv[3]);
+    if(num_threads<1||que_size<1){
+        fprintf(stderr, "invalid parameters\n");
+        exit(1);
+    }
 }
 // TODO: HW3 — Initialize thread pool and request queue
 // This server currently handles all requests in the main thread.
@@ -130,7 +137,7 @@ void getargs(int *port, int argc, char *argv[])
 int main(int argc, char *argv[])
 {
     //initialize que
-    RequestQueue * queue=init_queue(MAX_QUEUE_SIZE);
+    RequestQueue * queue=init_queue(que_size);
     //initialize thread pool
     thread_pool = malloc(sizeof(pthread_t) * num_threads);
     if (thread_pool == NULL) {
@@ -183,7 +190,6 @@ int main(int argc, char *argv[])
     free(thread_pool);
     return 0;
 }
-
 
 
 
