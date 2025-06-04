@@ -156,10 +156,35 @@ requestServeStatic(int fd, char *filename, int filesize, struct timeval arrival,
     requestGetFiletype(filename, filetype);
 
     srcfd = Open(filename, O_RDONLY, 0);
-
+    if (srcfd < 0) {
+        t_stats->stat_req--;
+        requestError(fd, filename, "403", "Forbidden",
+                     "OS-HW3 Server could not read this file",
+                     arrival, dispatch, t_stats);
+        return;
+    }
+    //printf("open didn't fail got fd: %d\n", srcfd);
+    if (filesize == 0) {
+        t_stats->stat_req--;
+        Close(srcfd);
+        requestError(fd, filename, "403", "Forbidden",
+                     "OS-HW3 Server cannot map empty file",
+                     arrival, dispatch, t_stats);
+        return;
+    }
     // Rather than call read() to read the file into memory,
     // which would require that we allocate a buffer, we memory-map the file
     srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+    if (srcp == MAP_FAILED) {
+        //printf("Mmap failed\n");
+        t_stats->stat_req--;
+        Close(srcfd);
+        requestError(fd, filename, "403", "Forbidden",
+                     "OS-HW3 Server could not read this file",
+                     arrival, dispatch, t_stats);
+        return;
+    }
+    //printf("Mmap didn't fail\n");
     Close(srcfd);
 
     // put together response
@@ -220,13 +245,19 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
         }
 
         if (is_static) {
+            //printf("got static\n");
             if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
                 requestError(fd, filename, "403", "Forbidden",
                              "OS-HW3 Server could not read this file",
                              arrival, dispatch, t_stats);
                 return;
             }
+            //printf("valid static request\n");
             t_stats->stat_req++;
+            char stats_buf[MAXLINE];
+            stats_buf[0] = '\0';
+            append_stats(stats_buf, t_stats, arrival, dispatch);
+            add_to_log(log, stats_buf, strlen(stats_buf));
             requestServeStatic(fd, filename, sbuf.st_size, arrival, dispatch,
                                t_stats);
 
@@ -239,6 +270,10 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
                 return;
             }
             t_stats->dynm_req++;
+            char stats_buf[MAXLINE];
+            stats_buf[0] = '\0';
+            append_stats(stats_buf, t_stats, arrival, dispatch);
+            add_to_log(log, stats_buf, strlen(stats_buf));
             requestServeDynamic(fd, filename, cgiargs, arrival, dispatch,
                                 t_stats);
 
@@ -265,11 +300,11 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
         add_to_log(log, stats_buf, strlen(stats_buf));
         requestServePost(fd, arrival, dispatch, t_stats, log);
 
-
     } else {
         requestError(fd, method, "501", "Not Implemented",
                      "OS-HW3 Server does not implement this method",
                      arrival, dispatch, t_stats);
         return;
     }
+
 }
