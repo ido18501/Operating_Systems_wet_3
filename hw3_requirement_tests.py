@@ -353,7 +353,36 @@ class HW3RequirementTester:
                     all_correct = False
                     continue
 
-                stats = self.parse_all_statistics(result.stdout)
+                # Parse statistics ONLY from HTTP headers, not from log content
+                stats = {}
+                lines = result.stdout.splitlines()
+
+                for line in lines:
+                    # Only parse Header: lines, stop at response body
+                    if not line.startswith("Header: "):
+                        continue
+
+                    if "Stat-Thread-Id::" in line:
+                        match = re.search(r'Stat-Thread-Id:: (\d+)', line)
+                        if match:
+                            stats['thread_id'] = int(match.group(1))
+                    elif "Stat-Thread-Count::" in line:
+                        match = re.search(r'Stat-Thread-Count:: (\d+)', line)
+                        if match:
+                            stats['thread_count'] = int(match.group(1))
+                    elif "Stat-Thread-Static::" in line:
+                        match = re.search(r'Stat-Thread-Static:: (\d+)', line)
+                        if match:
+                            stats['thread_static'] = int(match.group(1))
+                    elif "Stat-Thread-Dynamic::" in line:
+                        match = re.search(r'Stat-Thread-Dynamic:: (\d+)', line)
+                        if match:
+                            stats['thread_dynamic'] = int(match.group(1))
+                    elif "Stat-Thread-Post::" in line:
+                        match = re.search(r'Stat-Thread-Post:: (\d+)', line)
+                        if match:
+                            stats['thread_post'] = int(match.group(1))
+
                 current_counts = {
                     'total': stats.get('thread_count', 0),
                     'static': stats.get('thread_static', 0),

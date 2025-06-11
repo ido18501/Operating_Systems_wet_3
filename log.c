@@ -1,22 +1,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include "log.h"
+#include "segel.h"
 
 
 // Creates a new server log instance (stub)
 server_log create_log() {
-    server_log log = malloc(sizeof(*log));
-    if (!log) {
-        return NULL;
-    }
-
+    server_log log = Malloc(sizeof(*log));
     log->capacity = 4096;
     log->size = 0;
-    log->buffer = malloc(log->capacity);
-    if (!log->buffer) {
-        free(log);
-        return NULL;
-    }
+    log->buffer = Malloc(log->capacity);
     log->buffer[0] = '\0';
 
     pthread_mutex_init(&log->lock, NULL);
@@ -90,10 +83,8 @@ int get_log(server_log log, char **dst) {
     }
 
     log_start_read(log);
-    *dst = malloc(log->size + 1);
-    if (*dst) {
-        memcpy(*dst, log->buffer, log->size + 1);
-    }
+    *dst = Malloc(log->size + 1);
+    memcpy(*dst, log->buffer, log->size + 1);
     int result_size = log->size;
     log_end_read(log);
     return result_size;
@@ -115,13 +106,11 @@ void add_to_log(server_log log, const char *data, int data_len) {
         while (new_capacity < log->size + data_len + 1) {
             new_capacity *= 2;
         }
-        char *new_buf = malloc(new_capacity);
-        if (new_buf) {
-            memcpy(new_buf, log->buffer, log->size);
-            free(log->buffer);
-            log->buffer = new_buf;
-            log->capacity = new_capacity;
-        }
+        char *new_buf = Malloc(new_capacity);
+        memcpy(new_buf, log->buffer, log->size);
+        free(log->buffer);
+        log->buffer = new_buf;
+        log->capacity = new_capacity;
     }
 
     memcpy(log->buffer + log->size, data, data_len);
