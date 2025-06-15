@@ -3,7 +3,6 @@
 #include "log.h"
 #include "segel.h"
 
-
 // Creates a new server log instance (stub)
 server_log create_log() {
     server_log log = Malloc(sizeof(*log));
@@ -62,11 +61,9 @@ static void log_start_write(server_log log) {
     }
     log->waiting_writers--;
     log->writers = 1;
-    pthread_mutex_unlock(&log->lock);
 }
 
 static void log_end_write(server_log log) {
-    pthread_mutex_lock(&log->lock);
     log->writers = 0;
     if (log->waiting_writers > 0) {
         pthread_cond_signal(&log->writers_cond);
@@ -81,7 +78,6 @@ int get_log(server_log log, char **dst) {
     if (!log || !dst) {
         return 0;
     }
-
     log_start_read(log);
     *dst = Malloc(log->size + 1);
     memcpy(*dst, log->buffer, log->size + 1);
@@ -98,9 +94,6 @@ void add_to_log(server_log log, const char *data, int data_len) {
     }
 
     log_start_write(log);
-
-    pthread_mutex_lock(&log->lock);
-
     if (log->size + data_len + 1 >= log->capacity) {
         size_t new_capacity = log->capacity * 2;
         while (new_capacity < log->size + data_len + 1) {
@@ -117,8 +110,8 @@ void add_to_log(server_log log, const char *data, int data_len) {
     log->size += data_len;
     log->buffer[log->size] = '\0';
 
-    pthread_mutex_unlock(&log->lock);
-
     log_end_write(log);
+
+
 }
 

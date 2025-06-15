@@ -55,7 +55,7 @@ RequestQueue* init_queue(int capacity) {
 }
 void enqueue(RequestQueue *q, int connfd, struct timeval arrival_time) {
     pthread_mutex_lock(&q->mutex);
-    if (q->size == q->capacity) {
+    while (q->size == q->capacity) {
         pthread_cond_wait(&q->not_full, &q->mutex);
     }
     q->buffer[q->rear].connfd = connfd;
@@ -68,7 +68,7 @@ void enqueue(RequestQueue *q, int connfd, struct timeval arrival_time) {
 }
 
 
-Request dequeue(RequestQueue *q, struct timeval *arrival_out) {
+Request dequeue(RequestQueue *q, struct timeval *arrival_out, struct timeval *dispatch) {
     pthread_mutex_lock(&q->mutex);
     while (q->dequeueing_size == 0) {
         pthread_cond_wait(&q->not_empty, &q->mutex);
@@ -78,6 +78,7 @@ Request dequeue(RequestQueue *q, struct timeval *arrival_out) {
         *arrival_out = req.arrival_time;
     q->front = (q->front + 1) % q->capacity;
     q->dequeueing_size--;
+    gettimeofday(dispatch, NULL);
     pthread_mutex_unlock(&q->mutex);
     return req;
 }
@@ -99,10 +100,8 @@ void *worker_thread(void *arg) {
     stats->total_req = 0;
     while (1) {
         struct timeval arrival;
-        Request req = dequeue(g_queue, &arrival);
-
         struct timeval now, dispatch_interval;
-        gettimeofday(&now, NULL);
+        Request req = dequeue(g_queue, &arrival, &now);
         timersub(&now, &arrival, &dispatch_interval);
         requestHandle(req.connfd, arrival, dispatch_interval, stats, g_log);
         Close(req.connfd);
@@ -164,7 +163,11 @@ int main(int argc, char *argv[])
 
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+        connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);pthread_mutex_lock(&queue->mutex);
+        while (queue->size == queue->capacity) {
+            pthread_cond_wait(&queue->not_full, &queue->mutex);
+        }
+        pthread_mutex_unlock(&queue->mutex);
         struct timeval arrival;
         gettimeofday(&arrival, NULL);
         enqueue(queue,connfd,arrival);
