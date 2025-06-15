@@ -231,13 +231,12 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
         return;
     }
     sscanf(buf, "%s %s %s", method, uri, version);
-
+    t_stats->total_req++;
     if (!strcasecmp(method, "GET")) {
         requestReadhdrs(&rio);
 
         is_static = requestParseURI(uri, filename, cgiargs);
         if (stat(filename, &sbuf) < 0) {
-            t_stats->total_req++;
             requestError(fd, filename, "404", "Not found",
                          "OS-HW3 Server could not find this file",
                          arrival, dispatch, t_stats);
@@ -247,14 +246,12 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
         if (is_static) {
             //printf("got static\n");
             if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
-                t_stats->total_req++;
                 requestError(fd, filename, "403", "Forbidden",
                              "OS-HW3 Server could not read this file",
                              arrival, dispatch, t_stats);
                 return;
             }
             //printf("valid static request\n");
-            t_stats->total_req++;
             t_stats->stat_req++;
             char stats_buf[MAXLINE];
             stats_buf[0] = '\0';
@@ -266,13 +263,11 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
 
         } else {
             if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) {
-                t_stats->total_req++;
                 requestError(fd, filename, "403", "Forbidden",
                              "OS-HW3 Server could not run this CGI program",
                              arrival, dispatch, t_stats);
                 return;
             }
-            t_stats->total_req++;
             t_stats->dynm_req++;
             char stats_buf[MAXLINE];
             stats_buf[0] = '\0';
@@ -291,23 +286,19 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
 
         // Check if the requested file exists (same as GET does)
         if (stat(filename, &sbuf) < 0) {
-            t_stats->total_req++;
             // File doesn't exist - return 404 error
             requestError(fd, filename, "404", "Not found",
                          "OS-HW3 Server could not find this file",
                          arrival, dispatch, t_stats);
             return;
         }
-        t_stats->total_req++;
         t_stats->post_req++;
         char stats_buf[MAXLINE];
         stats_buf[0] = '\0';
         append_stats(stats_buf, t_stats, arrival, dispatch);
         requestServePost(fd, arrival, dispatch, t_stats, log);
-        add_to_log(log, stats_buf, strlen(stats_buf));
 
     } else {
-        t_stats->total_req++;
         requestError(fd, method, "501", "Not Implemented",
                      "OS-HW3 Server does not implement this method",
                      arrival, dispatch, t_stats);

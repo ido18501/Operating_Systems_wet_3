@@ -25,7 +25,7 @@ typedef struct {
     int size;
     int front;
     int rear;
-
+    int dequeueing_size;
     pthread_mutex_t mutex;
     pthread_cond_t not_full;
     pthread_cond_t not_empty;
@@ -47,7 +47,7 @@ RequestQueue* init_queue(int capacity) {
     q->size = 0;
     q->front = 0;
     q->rear = 0;
-
+    q->dequeueing_size=0;
     pthread_mutex_init(&q->mutex, NULL);
     pthread_cond_init(&q->not_full, NULL);
     pthread_cond_init(&q->not_empty, NULL);
@@ -55,34 +55,38 @@ RequestQueue* init_queue(int capacity) {
 }
 void enqueue(RequestQueue *q, int connfd, struct timeval arrival_time) {
     pthread_mutex_lock(&q->mutex);
-    while (q->size == q->capacity) {
+    if (q->size == q->capacity) {
         pthread_cond_wait(&q->not_full, &q->mutex);
     }
     q->buffer[q->rear].connfd = connfd;
     q->buffer[q->rear].arrival_time = arrival_time;
     q->rear = (q->rear + 1) % q->capacity;
     q->size++;
+    q->dequeueing_size++;
     pthread_cond_signal(&q->not_empty);
     pthread_mutex_unlock(&q->mutex);
 }
 
+
 Request dequeue(RequestQueue *q, struct timeval *arrival_out) {
     pthread_mutex_lock(&q->mutex);
-    while (q->size == 0) {
+    while (q->dequeueing_size == 0) {
         pthread_cond_wait(&q->not_empty, &q->mutex);
     }
     Request req = q->buffer[q->front];
     if (arrival_out != NULL)
         *arrival_out = req.arrival_time;
     q->front = (q->front + 1) % q->capacity;
-    q->size--;
-
-    pthread_cond_signal(&q->not_full);
+    q->dequeueing_size--;
     pthread_mutex_unlock(&q->mutex);
     return req;
 }
-
-
+void finishHandling(RequestQueue *q){
+    pthread_mutex_lock(&q->mutex);
+    q->size--;
+    pthread_cond_signal(&q->not_full);
+    pthread_mutex_unlock(&q->mutex);
+}
 void *worker_thread(void *arg) {
     ThreadArgs *args = (ThreadArgs *)arg;
     int thread_id = args->thread_id;
@@ -100,9 +104,9 @@ void *worker_thread(void *arg) {
         struct timeval now, dispatch_interval;
         gettimeofday(&now, NULL);
         timersub(&now, &arrival, &dispatch_interval);
-
         requestHandle(req.connfd, arrival, dispatch_interval, stats, g_log);
         Close(req.connfd);
+        finishHandling(g_queue);
     }
 
     free(stats);
