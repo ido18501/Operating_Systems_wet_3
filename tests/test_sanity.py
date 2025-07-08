@@ -9,12 +9,12 @@ from requests_futures.sessions import FuturesSession
 
 
 def test_static(server_port):
-    with Server("./server", server_port, 4, 8, "block") as server:
+    with Server("./server", server_port, 4, 8) as server:
         sleep(0.1)
         with FuturesSession() as session:
             future = session.get(f"http://localhost:{server_port}/home.html")
             response = future.result()
-            expected_headers = generate_static_headers(293, 1, 1, 0)
+            expected_headers = generate_static_headers(293, 1, 1, 0, post_count = 0)
             expected = STATIC_OUTPUT_CONTENT
             validate_response_full(response, expected_headers, expected)
         server.send_signal(SIGINT)
@@ -25,12 +25,12 @@ def test_static(server_port):
 
 
 def test_dynamic(server_port):
-    with Server("./server", server_port, 4, 8, "block") as server:
+    with Server("./server", server_port, 4, 8) as server:
         sleep(0.1)
         with FuturesSession() as session:
             future = session.get(f"http://localhost:{server_port}/output.cgi?1")
             response = future.result()
-            expected_headers = generate_dynamic_headers(123, 1, 0, 1)
+            expected_headers = generate_dynamic_headers(123, 1, 0, 1, post_count = 0)
             expected = DYNAMIC_OUTPUT_CONTENT.format(
                 seconds="1.0")
             validate_response_full(response, expected_headers, expected)

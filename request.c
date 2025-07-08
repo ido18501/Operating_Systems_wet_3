@@ -281,21 +281,7 @@ void requestHandle(int fd, struct timeval arrival, struct timeval dispatch,
         // TODO: add log entry using add_to_log(server_log log, const char* data, int data_len);
 
     } else if (!strcasecmp(method, "POST")) {
-        // Parse the URI to get the filename (same as GET does)
-        is_static = requestParseURI(uri, filename, cgiargs);
-
-        // Check if the requested file exists (same as GET does)
-        if (stat(filename, &sbuf) < 0) {
-            // File doesn't exist - return 404 error
-            requestError(fd, filename, "404", "Not found",
-                         "OS-HW3 Server could not find this file",
-                         arrival, dispatch, t_stats);
-            return;
-        }
         t_stats->post_req++;
-        char stats_buf[MAXLINE];
-        stats_buf[0] = '\0';
-        append_stats(stats_buf, t_stats, arrival, dispatch);
         requestServePost(fd, arrival, dispatch, t_stats, log);
 
     } else {

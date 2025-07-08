@@ -7,30 +7,36 @@ import math
 
 from definitions import DYNAMIC_OUTPUT_HEADERS, ERROR_OUTPUT_HEADERS, STATIC_OUTPUT_HEADERS
 
+def convert_dict_to_string(dictionary, dictionary_keys):
+       return  "\r\n".join([':'.join([k, dictionary[k]]) for k in dictionary_keys if k not in ["Content-length","Content-type","Server","Content-Length","Content-Type"]])
 
-def generate_static_headers(length, count, static_count, dynamic_count, content_type="text/html"):
+
+def generate_static_headers(length, count, static_count, dynamic_count, post_count,content_type="text/html"):
     headers = copy(STATIC_OUTPUT_HEADERS)
     headers['Content-Length'] = headers["Content-Length"].format(length=length)
     headers['Content-Type'] = headers["Content-Type"].format(content_type=content_type)
     headers['Stat-Thread-Count'] = headers['Stat-Thread-Count'].format(count=count)
     headers['Stat-Thread-Static'] = headers['Stat-Thread-Static'].format(count=static_count)
     headers['Stat-Thread-Dynamic'] = headers['Stat-Thread-Dynamic'].format(count=dynamic_count)
+    headers['Stat-Thread-Post']    = headers['Stat-Thread-Post'].format(count=post_count)
     return headers
 
-def generate_dynamic_headers(length, count, static_count, dynamic_count):
+def generate_dynamic_headers(length, count, static_count, dynamic_count, post_count):
     headers = copy(DYNAMIC_OUTPUT_HEADERS)
     headers['Content-length'] = headers["Content-length"].format(length=length)
     headers['Stat-Thread-Count'] = headers['Stat-Thread-Count'].format(count=count)
     headers['Stat-Thread-Static'] = headers['Stat-Thread-Static'].format(count=static_count)
     headers['Stat-Thread-Dynamic'] = headers['Stat-Thread-Dynamic'].format(count=dynamic_count)
+    headers['Stat-Thread-Post']    = headers['Stat-Thread-Post'].format(count=post_count)
     return headers
 
-def generate_error_headers(length, count, static_count, dynamic_count):
+def generate_error_headers(length, count, static_count, dynamic_count, post_count):
     headers = copy(ERROR_OUTPUT_HEADERS)
     headers['Content-Length'] = headers["Content-Length"].format(length=length)
     headers['Stat-Thread-Count'] = headers['Stat-Thread-Count'].format(count=count)
     headers['Stat-Thread-Static'] = headers['Stat-Thread-Static'].format(count=static_count)
     headers['Stat-Thread-Dynamic'] = headers['Stat-Thread-Dynamic'].format(count=dynamic_count)
+    headers['Stat-Thread-Post']    = headers['Stat-Thread-Post'].format(count=post_count)
     return headers
 
 def validate_out(out: str, err: str, expected: str):
@@ -56,6 +62,20 @@ def validate_response(response: requests.models.Response, expected_headers: dict
         f"\nGot:\n{response.text}"
 
 
+def validate_response_full_post(response: requests.models.Response, expected_headers: dict, expected: str, post_string):
+    assert response.status_code == 200
+    assert response.headers.keys() == expected_headers.keys(),\
+        f"\nExpected:\n{list(expected_headers.keys())}"\
+        f"\nGot:\n{list(response.headers.keys())}"
+    for header, value in expected_headers.items():
+        assert re.fullmatch(value, response.headers[header]),\
+            f"\nHeader:\n{header}"\
+            f"\nExpected:\n{value}"\
+            f"\nGot:\n{response.headers[header]}"
+    assert re.fullmatch(post_string, response.text),\
+        f"\nExpected:\n{repr(post_string)}"\
+        f"\nGot:\n{repr(response.text)}"
+    
 def validate_response_full(response: requests.models.Response, expected_headers: dict, expected: str):
     assert response.status_code == 200
     assert response.headers.keys() == expected_headers.keys(),\
@@ -69,7 +89,6 @@ def validate_response_full(response: requests.models.Response, expected_headers:
     assert re.fullmatch(expected, response.text),\
         f"\nExpected:\n{expected}"\
         f"\nGot:\n{response.text}"
-
 
 def validate_response_full_with_dispatch(response: requests.models.Response, expected_headers: dict, expected: str, dispatch: float):
     assert response.status_code == 200

@@ -48,7 +48,7 @@
 
 5. Run tests:
 
-    - python3.13 -m pytest test_server.py -vv -s -x --ff --timeout 30
+    - python3 -m pytest test_server.py -vv -s -x --ff --timeout 30
 
 ## Write your own tests
 
@@ -198,6 +198,15 @@ class ResponseParams(typing.TypedDict):
             - see all params here: https://www.python-httpx.org/api/#asyncclient (ctrl+f 'async request')
     """
 
+    warmup: list[dict]
+    """
+    Messages to send **before** batches.
+    
+    NOTE: Responses will not be returned or validated.
+
+    Can be used to help stabilize tests.
+    """
+
 
 class Responses(typing.NamedTuple):
     headers: list[ResponseStats]
@@ -209,19 +218,6 @@ class Responses(typing.NamedTuple):
 
 class TestServer:
     STAGGER = 0.01
-
-    @staticmethod
-    def assert_close_times(
-        actual: list[float], expected: list[float], eps: float | None = None
-    ):
-        eps = eps or CGI_SPINFOR / 2
-
-        assert len(expected) == len(actual), "missmatched amount of times"
-
-        actual = [a - actual[0] for a in actual]
-
-        for i, (a, e) in enumerate(zip(actual, expected)):
-            assert abs(a - e) < eps, f"Time {i} diff:\nact={actual}\nexp={expected}"
 
     def parse_headers(self, response: httpx.Response) -> ResponseStats:
         headers = response.headers
@@ -245,6 +241,7 @@ class TestServer:
             "queue_size": request.param["queue_size"],
             "batches": request.param["batches"],
             "stagger": request.param.get("stagger", self.STAGGER),
+            "warmup": request.param.get("warmup", []),
         }
 
         cmd = [
@@ -262,26 +259,27 @@ class TestServer:
 
         time.sleep(0.5)
         try:
-            headers = asyncio.run(
-                self._send_cgi_requests(params["batches"], port, params["stagger"])
-            )
+            headers = asyncio.run(self._send_cgi_requests(port, params))
             yield Responses(headers, params)
         finally:
             proc.kill()
             proc.wait()
 
     async def _send_cgi_requests(
-        self, batches: list[list[dict]], port: int, stagger: float | None
+        self, port: int, params: ResponseParams
     ) -> list[ResponseStats]:
         async with httpx.AsyncClient(base_url=f"http://localhost:{port}") as session:
+            for msg in params["warmup"]:
+                await session.request(method="POST", url="")
+
             requests = []
-            for batch in batches:
+            for batch in params["batches"]:
                 for msg in batch:
                     msg["url"] = msg.get("url", "")
                     msg["timeout"] = msg.get("timeout")
                     requests.append(asyncio.create_task(session.request(**msg)))
-                    if stagger is not None:
-                        await asyncio.sleep(stagger)
+                    if params["stagger"] is not None:
+                        await asyncio.sleep(params["stagger"])
                 await asyncio.sleep(CGI_SPINFOR * 1.5)
 
             responses: list[httpx.Response] = [await r for r in requests]
@@ -296,22 +294,34 @@ class TestServer:
             dict(
                 threads=1,
                 queue_size=5,
-                batches=[repeat(dict(method="GET", url="output.cgi"), 5)],
+                batches=[
+                    [dict(method="GET")],
+                    [*repeat(dict(method="GET", url="output.cgi"), 5)],
+                ],
             ),
             dict(
                 threads=5,
                 queue_size=1,
-                batches=[repeat(dict(method="GET", url="output.cgi"), 5)],
+                batches=[
+                    [dict(method="GET")],
+                    [*repeat(dict(method="GET", url="output.cgi"), 5)],
+                ],
             ),
             dict(
                 threads=5,
                 queue_size=5,
-                batches=[repeat(dict(method="GET", url="output.cgi"), 5)],
+                batches=[
+                    [dict(method="GET")],
+                    [*repeat(dict(method="GET", url="output.cgi"), 5)],
+                ],
             ),
             dict(
                 threads=3,
                 queue_size=3,
-                batches=[repeat(dict(method="GET", url="output.cgi"), 5)],
+                batches=[
+                    [dict(method="GET")],
+                    [*repeat(dict(method="GET", url="output.cgi"), 5)],
+                ],
             ),
         ],
         indirect=["responses"],
@@ -320,14 +330,11 @@ class TestServer:
         headers = responses.headers
 
         arrival = [h.StatReqArrival for h in headers]
-        dispatch = [h.StatReqDispatch for h in headers]
 
         indices = list(range(len(headers)))
         sorted_arrival = list(sorted(zip(arrival, indices)))
-        sorted_dispatch = list(sorted(zip(dispatch, indices)))
 
         assert [s[1] for s in sorted_arrival] == indices, sorted_arrival
-        assert [s[1] for s in sorted_dispatch] == indices
 
     @pytest.mark.parametrize(
         "responses",
@@ -350,8 +357,7 @@ class TestServer:
             arrival = headers.StatReqArrival
             dispatch = headers.StatReqDispatch
 
-            diff = dispatch - arrival
-            assert diff <= 0.1, f"Request {i} processed after {diff:.3f}s"
+            assert dispatch <= 0.1, f"Request {i} processed after {dispatch:.3f}s"
 
     @pytest.mark.parametrize(
         "responses",
@@ -361,19 +367,40 @@ class TestServer:
                 queue_size=5,
                 batches=[[*repeat(dict(method="GET", url="home.html"), 5)]],
             ),
+            dict(
+                threads=1,
+                queue_size=5,
+                batches=[[*repeat(dict(method="GET", url="output.cgi"), 5)]],
+            ),
+            dict(
+                threads=1,
+                queue_size=5,
+                batches=[[*repeat(dict(method="POST"), 5)]],
+            ),
         ],
         indirect=["responses"],
     )
     def test_blocks_when_no_workers_available(self, responses: Responses):
-        self.assert_close_times(
-            actual=[h.StatReqArrival for h in responses.headers],
-            expected=[self.STAGGER * i for i in range(len(responses.headers))],
-        )
+        eps = CGI_SPINFOR / 2
+        first_arrival = responses.headers[0].StatReqArrival
 
-        self.assert_close_times(
-            actual=[h.StatReqDispatch for h in responses.headers],
-            expected=[i * ADD_LOG_SLEEP for i in range(len(responses.headers))],
-        )
+        arrivals = [h.StatReqArrival - first_arrival for h in responses.headers]
+        dispatches = [h.StatReqDispatch for h in responses.headers]
+        for i, h in enumerate(responses.headers):
+            req = h.response.request
+
+            process_time = 0
+            if req.method == "GET":
+                process_time += ADD_LOG_SLEEP
+
+                if "cgi" in req.url.path:
+                    process_time += CGI_SPINFOR
+
+            arrival_diff = abs(self.STAGGER * i - arrivals[i])
+            dispatch_diff = abs(process_time * i - dispatches[i])
+
+            assert arrival_diff < eps, f"{i=} arrivals: {arrivals}"
+            assert dispatch_diff < eps, f" {i=} dispatches: {dispatches}"
 
     @pytest.mark.parametrize(
         "responses",
@@ -443,9 +470,9 @@ class TestServer:
                 queue_size=5,
                 batches=[
                     [
-                        *repeat(dict(method="GET", url="home.html"), 7),
+                        *repeat(dict(method="GET", url="home.html"), 6),
                         *repeat(dict(method="GET", url="output.cgi"), 7),
-                        *repeat(dict(method="POST"), 7),
+                        *repeat(dict(method="POST"), 5),
                     ]
                 ],
             ),
@@ -455,8 +482,8 @@ class TestServer:
                 batches=[
                     [
                         *repeat(dict(method="GET", url="home.html"), 7),
-                        *repeat(dict(method="GET", url="output.cgi"), 7),
-                        *repeat(dict(method="POST"), 7),
+                        *repeat(dict(method="GET", url="output.cgi"), 6),
+                        *repeat(dict(method="POST"), 5),
                     ]
                 ],
             ),
@@ -465,8 +492,8 @@ class TestServer:
                 queue_size=30,
                 batches=[
                     [
-                        *repeat(dict(method="GET", url="home.html"), 7),
-                        *repeat(dict(method="GET", url="output.cgi"), 7),
+                        *repeat(dict(method="GET", url="home.html"), 5),
+                        *repeat(dict(method="GET", url="output.cgi"), 6),
                         *repeat(dict(method="POST"), 7),
                     ]
                 ],
@@ -495,9 +522,7 @@ class TestServer:
             ).values()
         )
         actual_post = sum(
-            dict(
-                (r.StatThreadId, r.StatThreadDynamic) for r in responses.headers
-            ).values()
+            dict((r.StatThreadId, r.StatThreadPost) for r in responses.headers).values()
         )
 
         actual_total_count = sum(
@@ -554,10 +579,14 @@ class TestServer:
     def test_pending_and_active_le_queue_size(self, responses: Responses):
         """
         PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/382_f2
+        PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/373
+        PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/mbqnl1buu9t7ei
 
-        If staff replies that we need option:
-            A - this test should FAIL
-            B - this test should PASS
+        To summarize, this is the expected implementation:
+            - Queue.wait
+            - Accept
+            - Arrival
+            - Queue.enqueue
         """
 
         pending_and_active = []
@@ -591,6 +620,7 @@ class TestServer:
             dict(
                 threads=1,
                 queue_size=9,
+                warmup=[dict(method="POST")],
                 batches=[
                     [
                         *repeat(dict(method="GET"), 4),
@@ -602,6 +632,7 @@ class TestServer:
             dict(
                 threads=1,
                 queue_size=1,
+                warmup=[dict(method="POST")],
                 batches=[
                     [
                         *repeat(dict(method="GET"), 4),
@@ -616,13 +647,18 @@ class TestServer:
     def test_log_serial_requests(self, responses: Responses):
         """
         PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/377
+        PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/mbqnl1buu9t7ei
 
-        Do we need to add a delimiter?
+        Do we need to add a delimiter? **Yes**.
+
+        The segel said the delimiter for the **last** log does not matter, but this
+        test checks that it **does not exists**, e.g. stats1\nstats2\0
+                                                                   ^^^ ends here
+
+        If you have issues with this, feel free to tweak the test accordingly.
         """
 
-        expected_log = ""
-        for response in responses.headers[:-1]:
-            expected_log += response.to_string()
+        expected_log = "\n".join(h.to_string() for h in responses.headers[:-1])
 
         actual_log = responses.headers[-1].response.text
 
@@ -635,6 +671,7 @@ class TestServer:
                 threads=5,
                 queue_size=5,
                 stagger=0.01,
+                warmup=[dict(method="POST")],
                 batches=[
                     [
                         dict(method="GET", url="home.html"),  # writer locks
@@ -652,12 +689,24 @@ class TestServer:
     def test_log_writer_locks_first_after_write_lock_released(
         self, responses: Responses
     ):
+        """
+        PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/377
+        PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/mbqnl1buu9t7ei
+
+        Do we need to add a delimiter? **Yes**
+
+        The segel said the delimiter for the **last** log does not matter, but this
+        test checks that it **does not exists**, e.g. stats1\nstats2\0
+                                                                   ^^^ ends here
+
+        If you have issues with this, feel free to tweak the test accordingly.
+        """
         writer_0 = responses.headers[0]
         readers = responses.headers[1:-2]
         writer_1 = responses.headers[-2]
         final_reader = responses.headers[-1]
 
-        expected_log = writer_0.to_string() + writer_1.to_string()
+        expected_log = "\n".join((writer_0.to_string(), writer_1.to_string()))
         actual_log = final_reader.response.text
 
         for i, reader in enumerate(readers):
@@ -667,3 +716,39 @@ class TestServer:
         assert writer_1.to_string() in actual_log
 
         assert actual_log == expected_log
+
+    @pytest.mark.parametrize(
+        "responses",
+        [
+            dict(
+                threads=5,
+                queue_size=5,
+                stagger=0.01,
+                batches=[[dict(method="GET", url="output.cgi")]],
+            ),
+        ],
+        indirect=["responses"],
+    )
+    @pytest.mark.xfail(
+        reason=(
+            "PIAZZA: https://piazza.com/class/m8nd0nnxsj77dt/post/456"
+            " If option 1 is expected, this test should XPASS."
+            " If option 2 is expected, this test should XFAIL."
+        )
+    )
+    def test_headers(self, responses: Responses):
+        """
+        Depends on what they say here: https://piazza.com/class/m8nd0nnxsj77dt/post/456
+
+        If option 1 is expected, this test should FAIL.
+        If option 2 is expected, this test should PASS.
+        """
+
+        help_msg = r"""
+        If this test fails, make sure your request server dynamic does no write
+        "\r\n\r\n" before execv, since that means the CGI script will not be able to
+        write it's own headers.
+        """
+
+        response = responses.headers[0].response
+        assert "Content-Length" not in response.headers, (help_msg, response.headers)

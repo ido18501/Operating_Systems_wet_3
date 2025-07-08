@@ -2,22 +2,24 @@ STATIC_OUTPUT_HEADERS = {
     "Server": r"OS-HW3 Web Server",
     "Content-Length": r"{length}",
     "Content-Type": r"{content_type}",
-    "Stat-Req-Arrival": r"\: \d+.\d+",
-    "Stat-Req-Dispatch": r"\: \d+.\d+",
-    "Stat-Thread-Id": r"\: \d+",
-    "Stat-Thread-Count": r"\: {count}",
-    "Stat-Thread-Static": r"\: {count}",
-    "Stat-Thread-Dynamic": r"\: {count}"
+    "Stat-Req-Arrival": r": \d+.\d+",
+    "Stat-Req-Dispatch": r": \d+.\d+",
+    "Stat-Thread-Id": r": \d+",
+    "Stat-Thread-Count": r": {count}",
+    "Stat-Thread-Static": r": {count}",
+    "Stat-Thread-Dynamic": r": {count}",
+    "Stat-Thread-Post": r": {count}",
 }
 
 DYNAMIC_OUTPUT_HEADERS = {
     "Server": r"OS-HW3 Web Server",
-    "Stat-Req-Arrival": r"\: \d+.\d+",
-    "Stat-Req-Dispatch": r"\: \d+.\d+",
-    "Stat-Thread-Id": r"\: \d+",
-    "Stat-Thread-Count": r"\: {count}",
-    "Stat-Thread-Static": r"\: {count}",
-    "Stat-Thread-Dynamic": r"\: {count}",
+    "Stat-Req-Arrival": r": \d+.\d+",
+    "Stat-Req-Dispatch": r": \d+.\d+",
+    "Stat-Thread-Id": r": \d+",
+    "Stat-Thread-Count": r": {count}",
+    "Stat-Thread-Static": r": {count}",
+    "Stat-Thread-Dynamic": r": {count}",
+    "Stat-Thread-Post": r": {count}",
     "Content-length": r"{length}",
     "Content-type": r"text/html"
 }
@@ -25,12 +27,13 @@ DYNAMIC_OUTPUT_HEADERS = {
 ERROR_OUTPUT_HEADERS = {
     "Content-Type": r"text/html",
     "Content-Length": r"{length}",
-    "Stat-Req-Arrival": r"\: \d+.\d+",
-    "Stat-Req-Dispatch": r"\: \d+.\d+",
-    "Stat-Thread-Id": r"\: \d+",
-    "Stat-Thread-Count": r"\: {count}",
-    "Stat-Thread-Static": r"\: {count}",
-    "Stat-Thread-Dynamic": r"\: {count}"
+    "Stat-Req-Arrival": r": \d+.\d+",
+    "Stat-Req-Dispatch": r": \d+.\d+",
+    "Stat-Thread-Id": r": \d+",
+    "Stat-Thread-Count": r": {count}",
+    "Stat-Thread-Static": r": {count}",
+    "Stat-Thread-Dynamic": r": {count}",
+    "Stat-Thread-Post": r": {count}",
 }
 
 STATIC_OUTPUT_CONTENT = r"" \
